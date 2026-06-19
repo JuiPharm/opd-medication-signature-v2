@@ -1,75 +1,108 @@
 // Initialize Supabase Client
+function assertSupabaseConfig() {
+    if (!window.CONFIG || !CONFIG.SUPABASE_URL || !CONFIG.SUPABASE_ANON_KEY) {
+        throw new Error("ยังไม่ได้ตั้งค่า Supabase ในไฟล์ config.js");
+    }
+
+    if (CONFIG.SUPABASE_URL.includes("YOUR_") || CONFIG.SUPABASE_ANON_KEY.includes("YOUR_")) {
+        throw new Error("กรุณาใส่ SUPABASE_URL และ SUPABASE_ANON_KEY จริงในไฟล์ config.js");
+    }
+}
+
+assertSupabaseConfig();
 const supabaseUrl = CONFIG.SUPABASE_URL;
 const supabaseKey = CONFIG.SUPABASE_ANON_KEY;
 const supabase = window.supabase.createClient(supabaseUrl, supabaseKey);
 
+function normalizeStaffId(value) {
+    return String(value || '').trim();
+}
+
+function normalizePin(value) {
+    return String(value || '').trim();
+}
+
+function getRpcErrorMessage(error) {
+    if (!error) return '';
+    const message = [error.message, error.details, error.hint].filter(Boolean).join(' ');
+    if (/Could not find the function|schema cache|PGRST202/i.test(message)) {
+        return "ยังไม่ได้ติดตั้ง Supabase RPC production schema กรุณารัน database_setup.sql ใน Supabase SQL Editor";
+    }
+    if (/row-level security|permission denied|permission/i.test(message)) {
+        return "สิทธิ์ Supabase ไม่ถูกต้อง กรุณาตรวจ RLS/Policy/Grant ตาม database_setup.sql";
+    }
+    return error.message || "Unknown Supabase error";
+}
+
+function requireSessionToken() {
+    const token = sessionStorage.getItem('sessionToken');
+    if (!token) {
+        throw new Error("Session หมดอายุ กรุณาเข้าสู่ระบบใหม่");
+    }
+    return token;
+}
+
+function createSignatureFileName() {
+    const today = new Date();
+    const yyyy = today.getFullYear();
+    const mm = String(today.getMonth() + 1).padStart(2, '0');
+    const dd = String(today.getDate()).padStart(2, '0');
+    const randomId = crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + '-' + Math.random().toString(16).slice(2);
+    return `${yyyy}/${mm}/${dd}/${randomId}.png`;
+}
+
 const API = {
-    // 1. Authenticate Staff
+    // 1. Authenticate Staff via Supabase RPC. Tables are not exposed to the browser.
     async login(staffId, pin) {
-        const { data, error } = await supabase
-            .from('staff_users')
-            .select('*')
-            .eq('staff_id', staffId)
-            .eq('pin', pin)
-            .single();
-            
-        if (error || !data) {
-            throw new Error("รหัสเจ้าหน้าที่หรือ PIN ไม่ถูกต้อง");
+        const cleanStaffId = normalizeStaffId(staffId);
+        const cleanPin = normalizePin(pin);
+
+        if (!cleanStaffId || !cleanPin) {
+            throw new Error("กรุณากรอกรหัสเจ้าหน้าที่และ PIN");
         }
-        
-        return {
-            ok: true,
-            data: {
-                staffId: data.staff_id,
-                staffName: data.name,
-                role: data.role,
-                sessionToken: "local-session-" + data.id // Simplified session for v2
-            }
-        };
+
+        const { data, error } = await supabase.rpc('login_staff', {
+            p_staff_id: cleanStaffId,
+            p_pin: cleanPin
+        });
+
+        if (error) {
+            throw new Error(getRpcErrorMessage(error));
+        }
+
+        if (!data || !data.ok) {
+            throw new Error(data?.message || "รหัสเจ้าหน้าที่หรือ PIN ไม่ถูกต้อง");
+        }
+
+        return data;
     },
 
-    // 2. Check for Duplicates (same HN within 24 hours)
+    // 2. Check for duplicates (same HN within 24 hours)
     async checkDuplicate(hn) {
         const hnRegex = /^07-[0-9]{2}-[0-9]{6}$/;
         if (!hnRegex.test(hn)) {
             throw new Error("รูปแบบ HN ไม่ถูกต้อง (ต้องเป็น 07-XX-XXXXXX)");
         }
 
-        const yesterday = new Date();
-        yesterday.setHours(yesterday.getHours() - 24);
-
-        const { data, error } = await supabase
-            .from('transactions')
-            .select('id, created_at, staff_name')
-            .eq('hn', hn)
-            .gte('created_at', yesterday.toISOString())
-            .order('created_at', { ascending: false })
-            .limit(1);
+        const { data, error } = await supabase.rpc('check_duplicate', {
+            p_session_token: requireSessionToken(),
+            p_hn: hn
+        });
 
         if (error) {
-            throw new Error("เกิดข้อผิดพลาดในการตรวจสอบข้อมูลซ้ำ");
+            throw new Error(getRpcErrorMessage(error));
         }
 
-        if (data && data.length > 0) {
-            return {
-                ok: true,
-                code: "DUPLICATE_FOUND",
-                message: "พบรายการรับยาซ้ำ",
-                data: {
-                    recordId: data[0].id,
-                    submittedAt: data[0].created_at,
-                    staffName: data[0].staff_name
-                }
-            };
-        }
-
-        return { ok: true, code: "SUCCESS" };
+        return data || { ok: true, code: "SUCCESS" };
     },
 
-    // 3. Submit Signature (Upload to Storage, Insert to DB, Notify GAS)
+    // 3. Submit Signature (Upload to Storage, Insert through RPC, Notify GAS)
     async submitSignature(payload, session) {
         try {
-            // 1. Convert Base64 to Blob
+            if (!session?.sessionToken) {
+                throw new Error("Session หมดอายุ กรุณาเข้าสู่ระบบใหม่");
+            }
+
             const base64Data = payload.signatureBase64.split(',')[1];
             const byteCharacters = atob(base64Data);
             const byteNumbers = new Array(byteCharacters.length);
@@ -79,63 +112,57 @@ const API = {
             const byteArray = new Uint8Array(byteNumbers);
             const blob = new Blob([byteArray], { type: 'image/png' });
 
-            // 2. Upload to Supabase Storage
-            const today = new Date();
-            const yyyy = today.getFullYear();
-            const mm = String(today.getMonth() + 1).padStart(2, '0');
-            const dd = String(today.getDate()).padStart(2, '0');
-            const fileName = `${yyyy}/${mm}/${dd}/${payload.hn}_${Date.now()}.png`;
-
-            const { data: uploadData, error: uploadError } = await supabase.storage
+            const fileName = createSignatureFileName();
+            const { error: uploadError } = await supabase.storage
                 .from('signatures')
-                .upload(fileName, blob, { contentType: 'image/png' });
+                .upload(fileName, blob, {
+                    contentType: 'image/png',
+                    cacheControl: '31536000',
+                    upsert: false
+                });
 
-            if (uploadError) throw new Error("อัปโหลดรูปลายเซ็นไม่สำเร็จ: " + uploadError.message);
+            if (uploadError) {
+                throw new Error("อัปโหลดรูปลายเซ็นไม่สำเร็จ: " + uploadError.message);
+            }
 
-            // Get Public URL
             const { data: publicUrlData } = supabase.storage
                 .from('signatures')
                 .getPublicUrl(fileName);
             const signatureUrl = publicUrlData.publicUrl;
 
-            // 3. Insert Transaction into Supabase Database
-            const serviceDate = `${yyyy}-${mm}-${dd}`;
-            const { data: insertData, error: insertError } = await supabase
-                .from('transactions')
-                .insert([
-                    {
-                        hn: payload.hn,
-                        staff_id: session.staffId,
-                        staff_name: session.staffName,
-                        receiver_type: payload.receiverType,
-                        signature_url: signatureUrl,
-                        service_date: serviceDate,
-                        device_id: payload.deviceId || 'v2-web'
-                    }
-                ])
-                .select();
+            const { data, error } = await supabase.rpc('submit_transaction', {
+                p_session_token: session.sessionToken,
+                p_hn: payload.hn,
+                p_receiver_type: payload.receiverType,
+                p_signature_url: signatureUrl,
+                p_device_id: payload.deviceId || 'v2-web',
+                p_is_duplicate_confirmed: Boolean(payload.isDuplicateConfirmed)
+            });
 
-            if (insertError) throw new Error("บันทึกข้อมูลไม่สำเร็จ: " + insertError.message);
+            if (error) {
+                throw new Error(getRpcErrorMessage(error));
+            }
+            if (!data || !data.ok) {
+                throw new Error(data?.message || "บันทึกข้อมูลไม่สำเร็จ");
+            }
 
-            const recordId = insertData[0].id;
+            const result = data.data;
 
-            // 4. (Async) Call GAS Webhook to sync to Google Sheets
-            // We don't await this because we want to show success to the user immediately
             if (CONFIG.GAS_WEB_APP_URL && CONFIG.GAS_WEB_APP_URL !== "YOUR_V2_GAS_WEB_APP_URL_HERE") {
                 fetch(CONFIG.GAS_WEB_APP_URL, {
                     method: 'POST',
-                    mode: 'no-cors', // Used so we don't block on CORS issues, just fire and forget
+                    mode: 'no-cors',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         action: 'syncToSheets',
                         payload: {
-                            recordId: recordId,
+                            recordId: result.recordId,
                             hn: payload.hn,
-                            staffId: session.staffId,
-                            staffName: session.staffName,
+                            staffId: result.staffId,
+                            staffName: result.staffName,
                             receiverType: payload.receiverType,
                             signatureUrl: signatureUrl,
-                            serviceDate: serviceDate
+                            serviceDate: result.serviceDate
                         }
                     })
                 }).catch(e => console.error("GAS Sync Error:", e));
@@ -145,8 +172,8 @@ const API = {
                 ok: true,
                 message: "บันทึกข้อมูลเรียบร้อยแล้ว",
                 data: {
-                    recordId: recordId,
-                    serverTime: new Date().toISOString()
+                    recordId: result.recordId,
+                    serverTime: result.serverTime
                 }
             };
 

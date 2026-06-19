@@ -277,6 +277,7 @@ class App {
 
         try {
             const sessionData = {
+                sessionToken: sessionStorage.getItem('sessionToken'),
                 staffId: sessionStorage.getItem('staffId'),
                 staffName: sessionStorage.getItem('staffName')
             };

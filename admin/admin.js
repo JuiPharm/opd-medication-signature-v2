@@ -1,6 +1,43 @@
+function assertSupabaseConfig() {
+    if (!window.CONFIG || !CONFIG.SUPABASE_URL || !CONFIG.SUPABASE_ANON_KEY) {
+        throw new Error("ยังไม่ได้ตั้งค่า Supabase ในไฟล์ ../frontend/config.js");
+    }
+
+    if (CONFIG.SUPABASE_URL.includes("YOUR_") || CONFIG.SUPABASE_ANON_KEY.includes("YOUR_")) {
+        throw new Error("กรุณาใส่ SUPABASE_URL และ SUPABASE_ANON_KEY จริงในไฟล์ ../frontend/config.js");
+    }
+}
+
+assertSupabaseConfig();
 const supabaseUrl = CONFIG.SUPABASE_URL;
 const supabaseKey = CONFIG.SUPABASE_ANON_KEY;
 const supabase = window.supabase.createClient(supabaseUrl, supabaseKey);
+
+function normalizeStaffId(value) {
+    return String(value || '').trim();
+}
+
+function normalizePin(value) {
+    return String(value || '').trim();
+}
+
+function getRpcErrorMessage(error) {
+    if (!error) return '';
+    const message = [error.message, error.details, error.hint].filter(Boolean).join(' ');
+    if (/Could not find the function|schema cache|PGRST202/i.test(message)) {
+        return "ยังไม่ได้ติดตั้ง Supabase RPC production schema กรุณารัน database_setup.sql ใน Supabase SQL Editor";
+    }
+    if (/row-level security|permission denied|permission/i.test(message)) {
+        return "สิทธิ์ Supabase ไม่ถูกต้อง กรุณาตรวจ RLS/Policy/Grant ตาม database_setup.sql";
+    }
+    return error.message || "Unknown Supabase error";
+}
+
+function textCell(value) {
+    const td = document.createElement('td');
+    td.textContent = value ?? '';
+    return td;
+}
 
 class AdminApp {
     constructor() {
@@ -14,26 +51,20 @@ class AdminApp {
         this.loadingOverlay = document.getElementById('loading-overlay');
         this.loginScreen = document.getElementById('login-screen');
         this.dashboardScreen = document.getElementById('dashboard-screen');
-        
         this.loginForm = document.getElementById('login-form');
         this.loginError = document.getElementById('login-error');
-        
         this.navTransactions = document.getElementById('nav-transactions');
         this.navStaff = document.getElementById('nav-staff');
         this.btnLogout = document.getElementById('btn-logout');
-        
         this.viewTransactions = document.getElementById('view-transactions');
         this.viewStaff = document.getElementById('view-staff');
-        
         this.btnSearch = document.getElementById('btn-search');
         this.btnClearSearch = document.getElementById('btn-clear-search');
         this.searchHn = document.getElementById('search-hn');
         this.searchDate = document.getElementById('search-date');
         this.transactionsTbody = document.getElementById('transactions-tbody');
-        
         this.staffTbody = document.getElementById('staff-tbody');
         this.btnAddStaff = document.getElementById('btn-add-staff');
-        
         this.imageModal = document.getElementById('image-modal');
         this.signaturePreview = document.getElementById('signature-preview');
         this.btnCloseModal = document.getElementById('btn-close-modal');
@@ -42,36 +73,34 @@ class AdminApp {
     bindEvents() {
         this.loginForm.addEventListener('submit', (e) => this.handleLogin(e));
         this.btnLogout.addEventListener('click', () => this.handleLogout());
-        
         this.navTransactions.addEventListener('click', () => this.switchView('transactions'));
         this.navStaff.addEventListener('click', () => this.switchView('staff'));
-        
         this.btnSearch.addEventListener('click', () => this.loadTransactions());
         this.btnClearSearch.addEventListener('click', () => {
             this.searchHn.value = '';
             this.searchDate.value = '';
             this.loadTransactions();
         });
-        
         this.btnCloseModal.addEventListener('click', () => {
             this.imageModal.classList.add('hidden');
             this.signaturePreview.src = '';
         });
-
         this.btnAddStaff.addEventListener('click', () => this.handleAddStaff());
     }
 
     showLoading(show) {
-        if(show) this.loadingOverlay.classList.remove('hidden');
+        if (show) this.loadingOverlay.classList.remove('hidden');
         else this.loadingOverlay.classList.add('hidden');
     }
 
     checkSession() {
+        const sessionToken = sessionStorage.getItem('adminSessionToken');
         const staffId = sessionStorage.getItem('adminStaffId');
+        const staffName = sessionStorage.getItem('adminStaffName');
         const role = sessionStorage.getItem('adminRole');
-        
-        if (staffId && role) {
-            this.session = { staffId, role };
+
+        if (sessionToken && staffId && role) {
+            this.session = { sessionToken, staffId, staffName, role };
             this.showDashboard();
         } else {
             this.loginScreen.classList.remove('hidden');
@@ -84,26 +113,29 @@ class AdminApp {
         this.loginError.classList.add('hidden');
         this.showLoading(true);
 
-        const staffId = document.getElementById('login-staff-id').value.trim();
-        const pin = document.getElementById('login-pin').value.trim();
+        const staffId = normalizeStaffId(document.getElementById('login-staff-id').value);
+        const pin = normalizePin(document.getElementById('login-pin').value);
 
         try {
-            const { data, error } = await supabase
-                .from('staff_users')
-                .select('*')
-                .eq('staff_id', staffId)
-                .eq('pin', pin)
-                .single();
+            const { data, error } = await supabase.rpc('login_staff', {
+                p_staff_id: staffId,
+                p_pin: pin
+            });
 
-            if (error || !data) {
-                throw new Error('รหัสพนักงานหรือ PIN ไม่ถูกต้อง');
-            }
+            if (error) throw new Error(getRpcErrorMessage(error));
+            if (!data || !data.ok) throw new Error(data?.message || 'รหัสพนักงานหรือ PIN ไม่ถูกต้อง');
 
-            // Allow both ADMIN and STAFF to login to this portal, but limit views
-            sessionStorage.setItem('adminStaffId', data.staff_id);
-            sessionStorage.setItem('adminRole', data.role);
-            this.session = { staffId: data.staff_id, role: data.role };
-            
+            sessionStorage.setItem('adminSessionToken', data.data.sessionToken);
+            sessionStorage.setItem('adminStaffId', data.data.staffId);
+            sessionStorage.setItem('adminStaffName', data.data.staffName);
+            sessionStorage.setItem('adminRole', data.data.role);
+            this.session = {
+                sessionToken: data.data.sessionToken,
+                staffId: data.data.staffId,
+                staffName: data.data.staffName,
+                role: data.data.role
+            };
+
             this.showDashboard();
         } catch (err) {
             this.loginError.textContent = err.message;
@@ -114,7 +146,9 @@ class AdminApp {
     }
 
     handleLogout() {
+        sessionStorage.removeItem('adminSessionToken');
         sessionStorage.removeItem('adminStaffId');
+        sessionStorage.removeItem('adminStaffName');
         sessionStorage.removeItem('adminRole');
         this.session = null;
         this.loginScreen.classList.remove('hidden');
@@ -124,13 +158,13 @@ class AdminApp {
     showDashboard() {
         this.loginScreen.classList.add('hidden');
         this.dashboardScreen.classList.remove('hidden');
-        
+
         if (this.session.role === 'ADMIN') {
             this.navStaff.classList.remove('hidden');
         } else {
             this.navStaff.classList.add('hidden');
         }
-        
+
         this.switchView('transactions');
     }
 
@@ -139,7 +173,7 @@ class AdminApp {
         this.navStaff.classList.remove('active');
         this.viewTransactions.classList.add('hidden');
         this.viewStaff.classList.add('hidden');
-        
+
         if (viewName === 'transactions') {
             this.navTransactions.classList.add('active');
             this.viewTransactions.classList.remove('hidden');
@@ -153,54 +187,48 @@ class AdminApp {
 
     async loadTransactions() {
         this.showLoading(true);
-        this.transactionsTbody.innerHTML = '';
-        
-        let query = supabase
-            .from('transactions')
-            .select('*')
-            .order('created_at', { ascending: false })
-            .limit(100);
-            
-        const hn = this.searchHn.value.trim();
-        const date = this.searchDate.value;
-        
-        if (hn) query = query.eq('hn', hn);
-        if (date) query = query.eq('service_date', date);
-        
-        const { data, error } = await query;
+        this.transactionsTbody.textContent = '';
+
+        const { data, error } = await supabase.rpc('list_transactions', {
+            p_session_token: this.session.sessionToken,
+            p_hn: this.searchHn.value.trim() || null,
+            p_service_date: this.searchDate.value || null
+        });
         this.showLoading(false);
-        
+
         if (error) {
-            alert('โหลดข้อมูลผิดพลาด: ' + error.message);
+            alert('โหลดข้อมูลผิดพลาด: ' + getRpcErrorMessage(error));
             return;
         }
-        
-        if (data.length === 0) {
-            this.transactionsTbody.innerHTML = '<tr><td colspan="5" class="text-center">ไม่พบข้อมูล</td></tr>';
+
+        if (!data || data.length === 0) {
+            const tr = document.createElement('tr');
+            const td = textCell('ไม่พบข้อมูล');
+            td.colSpan = 5;
+            td.className = 'text-center';
+            tr.appendChild(td);
+            this.transactionsTbody.appendChild(tr);
             return;
         }
-        
+
         data.forEach(tx => {
             const tr = document.createElement('tr');
-            
             const timeStr = new Date(tx.created_at).toLocaleString('th-TH');
             const signatureLink = tx.drive_archive_url || tx.signature_url;
-            
-            tr.innerHTML = `
-                <td>${timeStr}</td>
-                <td>${tx.hn}</td>
-                <td>${tx.staff_name} (${tx.staff_id})</td>
-                <td>${tx.receiver_type === 'PATIENT' ? 'ผู้ป่วย' : 'ญาติ'}</td>
-                <td>
-                    <button class="btn-primary btn-small view-sig-btn" data-url="${signatureLink}">ดูรูป</button>
-                </td>
-            `;
-            
-            tr.querySelector('.view-sig-btn').addEventListener('click', (e) => {
-                const url = e.target.getAttribute('data-url');
-                this.showImage(url);
-            });
-            
+
+            tr.appendChild(textCell(timeStr));
+            tr.appendChild(textCell(tx.hn));
+            tr.appendChild(textCell(`${tx.staff_name || ''} (${tx.staff_id || ''})`));
+            tr.appendChild(textCell(tx.receiver_type === 'PATIENT' ? 'ผู้ป่วย' : 'ญาติ'));
+
+            const actionCell = document.createElement('td');
+            const button = document.createElement('button');
+            button.className = 'btn-primary btn-small view-sig-btn';
+            button.textContent = 'ดูรูป';
+            button.addEventListener('click', () => this.showImage(signatureLink));
+            actionCell.appendChild(button);
+            tr.appendChild(actionCell);
+
             this.transactionsTbody.appendChild(tr);
         });
     }
@@ -210,9 +238,8 @@ class AdminApp {
             alert("ไม่พบ URL ของรูปภาพ");
             return;
         }
-        // If it's a Drive URL, just open it in a new tab because embedding Drive can be tricky with permissions
         if (url.includes('drive.google.com')) {
-            window.open(url, '_blank');
+            window.open(url, '_blank', 'noopener');
         } else {
             this.signaturePreview.src = url;
             this.imageModal.classList.remove('hidden');
@@ -222,62 +249,84 @@ class AdminApp {
     async loadStaff() {
         if (this.session.role !== 'ADMIN') return;
         this.showLoading(true);
-        this.staffTbody.innerHTML = '';
-        
-        const { data, error } = await supabase
-            .from('staff_users')
-            .select('*')
-            .order('created_at', { ascending: true });
-            
+        this.staffTbody.textContent = '';
+
+        const { data, error } = await supabase.rpc('list_staff', {
+            p_session_token: this.session.sessionToken
+        });
+
         this.showLoading(false);
-        
+
         if (error) {
-            alert('โหลดข้อมูลพนักงานผิดพลาด: ' + error.message);
+            alert('โหลดข้อมูลพนักงานผิดพลาด: ' + getRpcErrorMessage(error));
             return;
         }
-        
+
         data.forEach(staff => {
             const tr = document.createElement('tr');
-            tr.innerHTML = `
-                <td>${staff.staff_id}</td>
-                <td>${staff.name}</td>
-                <td>${staff.role}</td>
-                <td>
-                    <button class="btn-warning btn-small delete-staff-btn" data-id="${staff.id}">ลบ</button>
-                </td>
-            `;
-            
-            tr.querySelector('.delete-staff-btn').addEventListener('click', async (e) => {
-                if(confirm(`ต้องการลบพนักงาน ${staff.name} ใช่หรือไม่?`)) {
-                    await supabase.from('staff_users').delete().eq('id', staff.id);
-                    this.loadStaff();
+            tr.appendChild(textCell(staff.staff_id));
+            tr.appendChild(textCell(staff.name));
+            tr.appendChild(textCell(staff.role));
+
+            const actionCell = document.createElement('td');
+            const button = document.createElement('button');
+            button.className = 'btn-warning btn-small delete-staff-btn';
+            button.textContent = 'ลบ';
+            button.addEventListener('click', async () => {
+                if (confirm(`ต้องการลบพนักงาน ${staff.name} ใช่หรือไม่?`)) {
+                    await this.deleteStaff(staff.id);
                 }
             });
-            
+            actionCell.appendChild(button);
+            tr.appendChild(actionCell);
+
             this.staffTbody.appendChild(tr);
         });
     }
 
+    async deleteStaff(staffUserId) {
+        this.showLoading(true);
+        const { error } = await supabase.rpc('delete_staff', {
+            p_session_token: this.session.sessionToken,
+            p_staff_user_id: staffUserId
+        });
+        this.showLoading(false);
+
+        if (error) {
+            alert('ลบพนักงานไม่สำเร็จ: ' + getRpcErrorMessage(error));
+            return;
+        }
+        this.loadStaff();
+    }
+
     async handleAddStaff() {
-        const staffId = prompt("ใส่รหัสพนักงาน (Staff ID):");
+        const staffId = normalizeStaffId(prompt("ใส่รหัสพนักงาน (Staff ID):"));
         if (!staffId) return;
-        const name = prompt("ใส่ชื่อ-นามสกุล:");
+        const name = String(prompt("ใส่ชื่อ-นามสกุล:") || '').trim();
         if (!name) return;
-        const pin = prompt("ตั้งรหัส PIN (ตัวเลข 4-6 หลัก):");
+        const pin = normalizePin(prompt("ตั้งรหัส PIN (ตัวเลข 4-6 หลัก):"));
         if (!pin) return;
         const role = confirm("ต้องการให้เป็น ADMIN หรือไม่? (OK=ADMIN, Cancel=STAFF)") ? 'ADMIN' : 'STAFF';
-        
+
         this.showLoading(true);
-        const { error } = await supabase
-            .from('staff_users')
-            .insert([{ staff_id: staffId, name: name, pin: pin, role: role }]);
-            
+        const { data, error } = await supabase.rpc('add_staff', {
+            p_session_token: this.session.sessionToken,
+            p_staff_id: staffId,
+            p_name: name,
+            p_pin: pin,
+            p_role: role
+        });
         this.showLoading(false);
+
         if (error) {
-            alert('เพิ่มพนักงานไม่สำเร็จ: ' + error.message);
-        } else {
-            this.loadStaff();
+            alert('เพิ่มพนักงานไม่สำเร็จ: ' + getRpcErrorMessage(error));
+            return;
         }
+        if (data && !data.ok) {
+            alert('เพิ่มพนักงานไม่สำเร็จ: ' + data.message);
+            return;
+        }
+        this.loadStaff();
     }
 }
 
