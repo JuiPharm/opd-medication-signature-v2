@@ -11,7 +11,7 @@ function assertSupabaseConfig() {
 assertSupabaseConfig();
 const supabaseUrl = CONFIG.SUPABASE_URL;
 const supabaseKey = CONFIG.SUPABASE_ANON_KEY;
-const supabase = window.supabase.createClient(supabaseUrl, supabaseKey);
+const supabaseClient = window.supabase.createClient(supabaseUrl, supabaseKey);
 
 function normalizeStaffId(value) {
     return String(value || '').trim();
@@ -117,7 +117,7 @@ class AdminApp {
         const pin = normalizePin(document.getElementById('login-pin').value);
 
         try {
-            const { data, error } = await supabase.rpc('login_staff', {
+            const { data, error } = await supabaseClient.rpc('login_staff', {
                 p_staff_id: staffId,
                 p_pin: pin
             });
@@ -189,7 +189,7 @@ class AdminApp {
         this.showLoading(true);
         this.transactionsTbody.textContent = '';
 
-        const { data, error } = await supabase.rpc('list_transactions', {
+        const { data, error } = await supabaseClient.rpc('list_transactions', {
             p_session_token: this.session.sessionToken,
             p_hn: this.searchHn.value.trim() || null,
             p_service_date: this.searchDate.value || null
@@ -251,7 +251,7 @@ class AdminApp {
         this.showLoading(true);
         this.staffTbody.textContent = '';
 
-        const { data, error } = await supabase.rpc('list_staff', {
+        const { data, error } = await supabaseClient.rpc('list_staff', {
             p_session_token: this.session.sessionToken
         });
 
@@ -286,7 +286,7 @@ class AdminApp {
 
     async deleteStaff(staffUserId) {
         this.showLoading(true);
-        const { error } = await supabase.rpc('delete_staff', {
+        const { error } = await supabaseClient.rpc('delete_staff', {
             p_session_token: this.session.sessionToken,
             p_staff_user_id: staffUserId
         });
@@ -309,7 +309,7 @@ class AdminApp {
         const role = confirm("ต้องการให้เป็น ADMIN หรือไม่? (OK=ADMIN, Cancel=STAFF)") ? 'ADMIN' : 'STAFF';
 
         this.showLoading(true);
-        const { data, error } = await supabase.rpc('add_staff', {
+        const { data, error } = await supabaseClient.rpc('add_staff', {
             p_session_token: this.session.sessionToken,
             p_staff_id: staffId,
             p_name: name,

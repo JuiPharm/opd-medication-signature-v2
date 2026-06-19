@@ -12,7 +12,7 @@ function assertSupabaseConfig() {
 assertSupabaseConfig();
 const supabaseUrl = CONFIG.SUPABASE_URL;
 const supabaseKey = CONFIG.SUPABASE_ANON_KEY;
-const supabase = window.supabase.createClient(supabaseUrl, supabaseKey);
+const supabaseClient = window.supabase.createClient(supabaseUrl, supabaseKey);
 
 function normalizeStaffId(value) {
     return String(value || '').trim();
@@ -51,7 +51,7 @@ function createSignatureFileName() {
     return `${yyyy}/${mm}/${dd}/${randomId}.png`;
 }
 
-const API = {
+window.API = {
     // 1. Authenticate Staff via Supabase RPC. Tables are not exposed to the browser.
     async login(staffId, pin) {
         const cleanStaffId = normalizeStaffId(staffId);
@@ -61,7 +61,7 @@ const API = {
             throw new Error("กรุณากรอกรหัสเจ้าหน้าที่และ PIN");
         }
 
-        const { data, error } = await supabase.rpc('login_staff', {
+        const { data, error } = await supabaseClient.rpc('login_staff', {
             p_staff_id: cleanStaffId,
             p_pin: cleanPin
         });
@@ -84,7 +84,7 @@ const API = {
             throw new Error("รูปแบบ HN ไม่ถูกต้อง (ต้องเป็น 07-XX-XXXXXX)");
         }
 
-        const { data, error } = await supabase.rpc('check_duplicate', {
+        const { data, error } = await supabaseClient.rpc('check_duplicate', {
             p_session_token: requireSessionToken(),
             p_hn: hn
         });
@@ -113,7 +113,7 @@ const API = {
             const blob = new Blob([byteArray], { type: 'image/png' });
 
             const fileName = createSignatureFileName();
-            const { error: uploadError } = await supabase.storage
+            const { error: uploadError } = await supabaseClient.storage
                 .from('signatures')
                 .upload(fileName, blob, {
                     contentType: 'image/png',
@@ -125,12 +125,12 @@ const API = {
                 throw new Error("อัปโหลดรูปลายเซ็นไม่สำเร็จ: " + uploadError.message);
             }
 
-            const { data: publicUrlData } = supabase.storage
+            const { data: publicUrlData } = supabaseClient.storage
                 .from('signatures')
                 .getPublicUrl(fileName);
             const signatureUrl = publicUrlData.publicUrl;
 
-            const { data, error } = await supabase.rpc('submit_transaction', {
+            const { data, error } = await supabaseClient.rpc('submit_transaction', {
                 p_session_token: session.sessionToken,
                 p_hn: payload.hn,
                 p_receiver_type: payload.receiverType,
