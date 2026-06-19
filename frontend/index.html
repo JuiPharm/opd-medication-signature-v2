@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>ระบบลงนามรับยา OPD</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div id="loading-overlay" class="overlay">
+        <div class="spinner"></div>
+        <p id="loading-text">กำลังโหลดระบบ...</p>
+    </div>
+
+    <!-- Login Screen -->
+    <div id="login-screen" class="screen hidden">
+        <div class="card fade-in">
+            <div class="logo-container text-center">
+                <img src="https://lh5.googleusercontent.com/d/1r7PM1ogHIbxskvcauVIYaQOfSHXWGncO" alt="Hospital Logo" class="app-logo">
+            </div>
+            <h1 class="text-center">ระบบลงนามรับยา OPD</h1>
+            <form id="login-form">
+                <div class="form-group">
+                    <label for="staff-id">รหัสเจ้าหน้าที่</label>
+                    <input type="text" id="staff-id" required autocomplete="username">
+                </div>
+                <div id="pin-container" class="form-group hidden">
+                    <label for="staff-pin">PIN</label>
+                    <input type="password" id="staff-pin" autocomplete="current-password">
+                </div>
+                <button type="submit" id="btn-login" class="btn-primary btn-block">เข้าสู่ระบบ</button>
+            </form>
+            <div id="login-error" class="alert alert-error hidden"></div>
+        </div>
+    </div>
+
+    <!-- HN Entry Screen -->
+    <div id="hn-screen" class="screen hidden">
+        <header class="app-header fade-in">
+            <div class="header-logo">
+                <img src="https://lh5.googleusercontent.com/d/1r7PM1ogHIbxskvcauVIYaQOfSHXWGncO" alt="Logo" class="header-logo-img">
+                <h2>ระบบลงนามรับยา</h2>
+            </div>
+            <div class="user-info">
+                <span id="staff-name-display"></span> (<span id="staff-id-display"></span>)
+            </div>
+            <button id="btn-logout" class="btn-text">ออกจากระบบ</button>
+        </header>
+        <main class="main-content">
+            <div class="card text-center slide-up">
+                <h2>บันทึกการจ่ายยา</h2>
+                <p class="warning-text">** ระบบนี้ไม่ได้เชื่อมต่อกับ HIS กรุณาตรวจสอบ HN จากเอกสารหรือฉลากยาให้ถูกต้อง **</p>
+                <form id="hn-form">
+                    <div class="form-group mt-3">
+                        <label for="hn-input">ระบุ HN (เช่น 07-12-345678)</label>
+                        <input type="text" id="hn-input" placeholder="07-XX-XXXXXX" required autocomplete="off">
+                    </div>
+                    <button type="submit" id="btn-check-hn" class="btn-primary btn-block btn-lg">ตรวจสอบและส่งให้ผู้ป่วย</button>
+                </form>
+                <div id="hn-error" class="alert alert-error hidden"></div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Duplicate Confirm Overlay -->
+    <div id="duplicate-overlay" class="overlay hidden">
+        <div class="card text-center slide-up">
+            <h3 class="warning-text">แจ้งเตือน: พบรายการรับยาซ้ำ</h3>
+            <p>พบการรับยาของ HN นี้เมื่อ: <span id="duplicate-time"></span></p>
+            <p>บันทึกโดย: <span id="duplicate-staff"></span></p>
+            <p>Record ID: <span id="duplicate-record"></span></p>
+            <div class="button-group-vertical mt-4">
+                <button id="btn-confirm-duplicate" class="btn-warning btn-block mb-2">ยืนยันดำเนินการต่อ</button>
+                <button id="btn-cancel-duplicate" class="btn-secondary btn-block mt-2">ยกเลิก</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Patient Mode Screen -->
+    <div id="patient-screen" class="screen hidden patient-theme">
+        <div class="card patient-card slide-up">
+            <div class="patient-header">
+                <div class="patient-header-left">
+                    <img src="https://lh5.googleusercontent.com/d/1r7PM1ogHIbxskvcauVIYaQOfSHXWGncO" alt="Logo" class="header-logo-img">
+                    <h2>ยืนยันการรับยา</h2>
+                </div>
+                <div class="hn-display">HN: <span id="patient-hn-display"></span></div>
+            </div>
+            
+            <form id="signature-form">
+                <div class="form-group">
+                    <label class="form-label">ผู้รับยา</label>
+                    <div class="radio-group">
+                        <label class="radio-label">
+                            <input type="radio" name="receiverType" value="PATIENT" required>
+                            ผู้ป่วยรับยาด้วยตนเอง
+                        </label>
+                        <label class="radio-label">
+                            <input type="radio" name="receiverType" value="RELATIVE" required>
+                            ญาติหรือผู้ดูแลรับยาแทน
+                        </label>
+                    </div>
+                </div>
+
+                <div class="statement-box">
+                    <p id="statement-text"></p>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">ลายมือชื่อ</label>
+                    <div class="signature-container">
+                        <canvas id="signature-pad"></canvas>
+                        <button type="button" id="btn-clear-sig" class="btn-text btn-clear">ล้างลายเซ็น</button>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="chk-accept" required>
+                        ข้าพเจ้าได้อ่านและเข้าใจข้อความข้างต้นแล้ว
+                    </label>
+                </div>
+
+                <button type="submit" id="btn-submit-sig" class="btn-primary btn-block btn-xl">ยืนยันการรับยา</button>
+                <div id="submit-error" class="alert alert-error hidden mt-3"></div>
+            </form>
+            
+            <div class="mt-4 text-center">
+                <button type="button" id="btn-cancel-patient" class="btn-text text-muted">ยกเลิก (สำหรับเจ้าหน้าที่)</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Success Screen -->
+    <div id="success-screen" class="screen hidden">
+        <div class="card text-center success-card scale-in">
+            <div class="success-icon">✓</div>
+            <h2>บันทึกสำเร็จ</h2>
+            <p class="mt-2">เวลา: <span id="success-time"></span></p>
+            <p>Record ID: <span id="success-record-id"></span></p>
+            
+            <div class="alert alert-info mt-4">
+                <strong>กรุณาส่งเครื่องคืนให้เจ้าหน้าที่</strong>
+            </div>
+            
+            <p class="text-muted mt-4">ระบบจะกลับสู่หน้าหลักใน <span id="countdown">5</span> วินาที</p>
+            <button id="btn-success-ok" class="btn-primary btn-block mt-3">ตกลง</button>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="config.js"></script>
+    <script src="api.js"></script>
+    <script src="signature-pad.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>

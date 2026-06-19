@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ระบบจัดการหลังบ้าน (Admin/Staff) v2</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="../frontend/styles.css"> <!-- Reuse some global styles -->
+    <link rel="stylesheet" href="admin.css">
+</head>
+<body>
+    <div id="loading-overlay" class="overlay hidden">
+        <div class="spinner"></div>
+        <p>กำลังโหลด...</p>
+    </div>
+
+    <!-- Login Screen -->
+    <div id="login-screen" class="screen">
+        <div class="card fade-in">
+            <h1 class="text-center">ระบบจัดการ (Admin/Staff)</h1>
+            <form id="login-form">
+                <div class="form-group">
+                    <label>รหัสพนักงาน (Staff ID)</label>
+                    <input type="text" id="login-staff-id" required>
+                </div>
+                <div class="form-group">
+                    <label>รหัสผ่าน (PIN)</label>
+                    <input type="password" id="login-pin" required>
+                </div>
+                <button type="submit" class="btn-primary btn-block">เข้าสู่ระบบ</button>
+            </form>
+            <div id="login-error" class="alert alert-error hidden mt-3"></div>
+        </div>
+    </div>
+
+    <!-- Dashboard Screen -->
+    <div id="dashboard-screen" class="screen hidden">
+        <nav class="admin-nav">
+            <div class="nav-brand">
+                <img src="https://lh5.googleusercontent.com/d/1r7PM1ogHIbxskvcauVIYaQOfSHXWGncO" alt="Logo" class="nav-logo">
+                <h2>ระบบหลังบ้าน v2</h2>
+            </div>
+            <div class="nav-links">
+                <button id="nav-transactions" class="active">รายการรับยา</button>
+                <button id="nav-staff" class="hidden">จัดการพนักงาน</button>
+                <button id="btn-logout" class="btn-warning">ออกจากระบบ</button>
+            </div>
+        </nav>
+
+        <main class="admin-container">
+            <!-- Transactions View -->
+            <div id="view-transactions" class="view-section">
+                <div class="card">
+                    <div class="filter-bar">
+                        <div class="form-group">
+                            <label>ค้นหา HN</label>
+                            <input type="text" id="search-hn" placeholder="เช่น 07-XX-XXXXXX">
+                        </div>
+                        <div class="form-group">
+                            <label>วันที่</label>
+                            <input type="date" id="search-date">
+                        </div>
+                        <div class="form-group align-bottom">
+                            <button id="btn-search" class="btn-primary">ค้นหา</button>
+                            <button id="btn-clear-search" class="btn-secondary">ล้าง</button>
+                        </div>
+                    </div>
+                    
+                    <div class="table-responsive mt-4">
+                        <table class="admin-table">
+                            <thead>
+                                <tr>
+                                    <th>เวลา</th>
+                                    <th>HN</th>
+                                    <th>ผู้ทำรายการ</th>
+                                    <th>ผู้รับยา</th>
+                                    <th>ลายเซ็น</th>
+                                </tr>
+                            </thead>
+                            <tbody id="transactions-tbody">
+                                <!-- Data will be populated here -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Staff View (Admin Only) -->
+            <div id="view-staff" class="view-section hidden">
+                <div class="card">
+                    <div class="flex-between mb-3">
+                        <h3>จัดการพนักงาน</h3>
+                        <button id="btn-add-staff" class="btn-primary">+ เพิ่มพนักงาน</button>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="admin-table">
+                            <thead>
+                                <tr>
+                                    <th>Staff ID</th>
+                                    <th>ชื่อ-นามสกุล</th>
+                                    <th>สิทธิ์ (Role)</th>
+                                    <th>จัดการ</th>
+                                </tr>
+                            </thead>
+                            <tbody id="staff-tbody">
+                                <!-- Data will be populated here -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Image Modal -->
+    <div id="image-modal" class="overlay hidden">
+        <div class="card image-modal-card">
+            <div class="flex-between mb-2">
+                <h3>ลายเซ็นรับยา</h3>
+                <button id="btn-close-modal" class="btn-text">ปิด [X]</button>
+            </div>
+            <img id="signature-preview" src="" alt="Signature" style="width:100%; border: 1px solid #ccc; border-radius: 4px;">
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="../frontend/config.js"></script>
+    <script src="admin.js"></script>
+</body>
+</html>
