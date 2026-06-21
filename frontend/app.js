@@ -46,6 +46,7 @@ class App {
         this.staffIdDisplay = document.getElementById('staff-id-display');
         this.waitingStaffDisplay = document.getElementById('waiting-staff-display');
         this.waitingStatus = document.getElementById('waiting-status');
+        this.queueStatus = document.getElementById('queue-status');
         this.waitingError = document.getElementById('waiting-error');
         this.patientHnDisplay = document.getElementById('patient-hn-display');
         this.patientDetailBox = document.getElementById('patient-detail-box');
@@ -67,10 +68,10 @@ class App {
         this.signatureForm.addEventListener('submit', e => this.handleSignatureSubmit(e));
         this.btnLogout.addEventListener('click', () => this.handleLogout());
         if (this.btnWaitingLogout) this.btnWaitingLogout.addEventListener('click', () => this.handleLogout());
-        this.btnCancelPatient.addEventListener('click', () => this.currentRequest ? this.resetToWaitingScreen() : this.showScreen('hn'));
+        this.btnCancelPatient.addEventListener('click', () => this.currentRequest ? this.resetAfterQueuedRequest() : this.startStaffMode());
         this.btnConfirmDuplicate.addEventListener('click', () => { this.duplicateOverlay.classList.add('hidden'); this.showPatientMode(this.currentHn, true); });
         this.btnCancelDuplicate.addEventListener('click', () => { this.duplicateOverlay.classList.add('hidden'); this.hnInput.value = ''; this.hnInput.focus(); });
-        this.btnSuccessOk.addEventListener('click', () => this.currentRequest ? this.resetToWaitingScreen() : this.resetToHnScreen());
+        this.btnSuccessOk.addEventListener('click', () => this.resetAfterQueuedRequest());
         if (this.btnClearSig) this.btnClearSig.addEventListener('click', () => { if (this.signaturePad) this.signaturePad.clear(); });
     }
     showLoading(show) { this.loadingOverlay.classList.toggle('hidden', !show); }
@@ -99,15 +100,17 @@ class App {
         const staffName = sessionStorage.getItem('staffName');
         const role = sessionStorage.getItem('staffRole');
         if (!token || !staffId) { this.showLoading(false); this.showScreen('login'); return; }
-        this.setupStaffSession(staffId, staffName);
+        this.setupStaffSession(staffId, staffName, role, sessionStorage.getItem('accountName'), sessionStorage.getItem('accountCode'));
         if (role === 'SIGNING_DEVICE') this.startWaitingMode();
-        else this.showScreen('hn');
+        else this.startStaffMode();
         this.showLoading(false);
     }
-    setupStaffSession(staffId, staffName) {
+    setupStaffSession(staffId, staffName, role, accountName, accountCode) {
+        const accountText = accountName ? ` | Account: ${accountName} (${accountCode || 'default'})` : '';
+        const roleText = role ? ` | ${role}` : '';
         this.staffIdDisplay.textContent = staffId;
-        this.staffNameDisplay.textContent = staffName;
-        if (this.waitingStaffDisplay) this.waitingStaffDisplay.textContent = `${staffName || staffId} (${staffId})`;
+        this.staffNameDisplay.textContent = `${staffName || staffId}${roleText}${accountText}`;
+        if (this.waitingStaffDisplay) this.waitingStaffDisplay.textContent = `${staffName || staffId} (${staffId})${roleText}${accountText}`;
     }
     async handleLogin(e) {
         e.preventDefault();
@@ -125,11 +128,11 @@ class App {
             sessionStorage.setItem('staffRole', res.data.role);
             sessionStorage.setItem('accountCode', res.data.accountCode || 'default');
             sessionStorage.setItem('accountName', res.data.accountName || 'Default Account');
-            this.setupStaffSession(res.data.staffId, res.data.staffName);
+            this.setupStaffSession(res.data.staffId, res.data.staffName, res.data.role, res.data.accountName, res.data.accountCode);
             this.staffIdInput.value = '';
             this.staffPinInput.value = '';
             if (res.data.role === 'SIGNING_DEVICE') this.startWaitingMode();
-            else this.showScreen('hn');
+            else this.startStaffMode();
         } catch (error) {
             this.loginError.textContent = error.message;
             this.loginError.classList.remove('hidden');
@@ -144,10 +147,17 @@ class App {
         this.currentHn = null;
         this.showScreen('login');
     }
+    startStaffMode() {
+        this.showScreen('hn');
+        this.startRequestPolling();
+    }
     startWaitingMode() {
         this.showScreen('waiting');
-        this.pollPendingRequest();
+        this.startRequestPolling();
+    }
+    startRequestPolling() {
         this.stopPolling();
+        this.pollPendingRequest();
         this.pollInterval = setInterval(() => this.pollPendingRequest(), 2000);
     }
     stopPolling() {
@@ -155,8 +165,11 @@ class App {
         this.pollInterval = null;
     }
     async pollPendingRequest() {
-        if (!this.waitingScreen || this.waitingScreen.classList.contains('hidden')) return;
+        const waitingVisible = this.waitingScreen && !this.waitingScreen.classList.contains('hidden');
+        const hnVisible = this.hnScreen && !this.hnScreen.classList.contains('hidden');
+        if (!waitingVisible && !hnVisible) return;
         this.waitingError.classList.add('hidden');
+        if (this.queueStatus) this.queueStatus.classList.add('hidden');
         try {
             const res = await API.getPendingSignatureRequest();
             if (res.code === 'PENDING_FOUND' && res.data) {
@@ -168,11 +181,20 @@ class App {
                     this.showPatientMode(claimed.data.hn, false, claimed.data);
                 }
             } else {
-                this.waitingStatus.textContent = 'รอข้อมูลจากเจ้าหน้าที่...';
+                if (waitingVisible) this.waitingStatus.textContent = 'รอข้อมูลจากเจ้าหน้าที่...';
+                if (hnVisible && this.queueStatus) {
+                    this.queueStatus.textContent = 'ยังไม่มีคิวจากหลังบ้านใน account นี้ สามารถกรอก HN เอง หรือรอให้หลังบ้านส่งคิวมา';
+                    this.queueStatus.classList.remove('hidden');
+                }
             }
         } catch (error) {
-            this.waitingError.textContent = error.message;
-            this.waitingError.classList.remove('hidden');
+            if (waitingVisible) {
+                this.waitingError.textContent = error.message;
+                this.waitingError.classList.remove('hidden');
+            } else if (this.queueStatus) {
+                this.queueStatus.textContent = error.message;
+                this.queueStatus.classList.remove('hidden');
+            }
         }
     }
     async handleHnSubmit(e) {
@@ -273,10 +295,13 @@ class App {
             countdownEl.textContent = count;
             if (count <= 0) {
                 clearInterval(this.successInterval);
-                if (this.currentRequest || sessionStorage.getItem('staffRole') === 'SIGNING_DEVICE') this.resetToWaitingScreen();
-                else this.resetToHnScreen();
+                this.resetAfterQueuedRequest();
             }
         }, 1000);
+    }
+    resetAfterQueuedRequest() {
+        if (sessionStorage.getItem('staffRole') === 'SIGNING_DEVICE') this.resetToWaitingScreen();
+        else this.resetToHnScreen();
     }
     resetToWaitingScreen() {
         if (this.successInterval) clearInterval(this.successInterval);
@@ -287,7 +312,7 @@ class App {
     resetToHnScreen() {
         if (this.successInterval) clearInterval(this.successInterval);
         this.hnInput.value = '';
-        this.showScreen('hn');
+        this.startStaffMode();
     }
 }
 window.addEventListener('DOMContentLoaded', () => { window.app = new App(); });

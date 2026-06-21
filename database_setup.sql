@@ -192,6 +192,7 @@ DROP FUNCTION IF EXISTS public.require_staff_session(TEXT);
 DROP FUNCTION IF EXISTS public.login_staff(TEXT, TEXT);
 DROP FUNCTION IF EXISTS public.login_staff(TEXT, TEXT, TEXT);
 DROP FUNCTION IF EXISTS public.list_transactions(TEXT, TEXT, DATE);
+DROP FUNCTION IF EXISTS public.list_signature_requests(TEXT, TEXT);
 DROP FUNCTION IF EXISTS public.list_staff(TEXT);
 
 CREATE OR REPLACE FUNCTION public.hash_session_token(p_token TEXT)
@@ -560,6 +561,49 @@ BEGIN
 END;
 $$;
 
+CREATE OR REPLACE FUNCTION public.list_signature_requests(p_session_token TEXT, p_status TEXT DEFAULT NULL)
+RETURNS TABLE (
+    id UUID,
+    created_at TIMESTAMPTZ,
+    updated_at TIMESTAMPTZ,
+    hn TEXT,
+    vn TEXT,
+    patient_first_name TEXT,
+    patient_last_name TEXT,
+    receiver_type TEXT,
+    status TEXT,
+    created_by_staff_id TEXT,
+    created_by_staff_name TEXT,
+    assigned_device_id TEXT,
+    signed_at TIMESTAMPTZ,
+    completed_transaction_id UUID
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, extensions
+AS $$
+DECLARE
+    v_session RECORD;
+    v_status TEXT := NULLIF(upper(trim(coalesce(p_status, ''))), '');
+BEGIN
+    SELECT * INTO v_session FROM public.require_staff_session(p_session_token);
+
+    IF v_session.role NOT IN ('ADMIN', 'STAFF', 'SIGNING_DEVICE') THEN
+        RAISE EXCEPTION 'Staff role required';
+    END IF;
+
+    RETURN QUERY
+    SELECT sr.id, sr.created_at, sr.updated_at, sr.hn, sr.vn, sr.patient_first_name, sr.patient_last_name,
+           sr.receiver_type, sr.status, sr.created_by_staff_id, sr.created_by_staff_name,
+           sr.assigned_device_id, sr.signed_at, sr.completed_transaction_id
+    FROM public.signature_requests sr
+    WHERE sr.account_id = v_session.account_id
+      AND (v_status IS NULL OR sr.status = v_status)
+    ORDER BY sr.updated_at DESC, sr.created_at DESC
+    LIMIT 100;
+END;
+$$;
+
 CREATE OR REPLACE FUNCTION public.get_pending_signature_request(p_session_token TEXT)
 RETURNS JSONB
 LANGUAGE plpgsql
@@ -709,6 +753,7 @@ GRANT EXECUTE ON FUNCTION public.list_staff(TEXT) TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.add_staff(TEXT, TEXT, TEXT, TEXT, TEXT) TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.delete_staff(TEXT, UUID) TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.create_signature_request(TEXT, TEXT, TEXT, TEXT, TEXT, TEXT) TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.list_signature_requests(TEXT, TEXT) TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.get_pending_signature_request(TEXT) TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.claim_signature_request(TEXT, UUID) TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.complete_signature_request(TEXT, UUID, TEXT, TEXT) TO anon, authenticated;

@@ -23,6 +23,7 @@ class AdminApp {
         this.loginForm = document.getElementById('login-form');
         this.loginError = document.getElementById('login-error');
         this.accountBadge = document.getElementById('account-badge');
+        this.sessionBadge = document.getElementById('session-badge');
         this.navTransactions = document.getElementById('nav-transactions');
         this.navCreateRequest = document.getElementById('nav-create-request');
         this.navStaff = document.getElementById('nav-staff');
@@ -40,6 +41,8 @@ class AdminApp {
         this.requestForm = document.getElementById('request-form');
         this.requestStatus = document.getElementById('request-status');
         this.requestError = document.getElementById('request-error');
+        this.requestsTbody = document.getElementById('requests-tbody');
+        this.btnRefreshRequests = document.getElementById('btn-refresh-requests');
         this.imageModal = document.getElementById('image-modal');
         this.signaturePreview = document.getElementById('signature-preview');
         this.btnCloseModal = document.getElementById('btn-close-modal');
@@ -55,6 +58,7 @@ class AdminApp {
         this.btnCloseModal.addEventListener('click', () => { this.imageModal.classList.add('hidden'); this.signaturePreview.src = ''; });
         this.btnAddStaff.addEventListener('click', () => this.handleAddStaff());
         this.requestForm.addEventListener('submit', e => this.handleCreateRequest(e));
+        if (this.btnRefreshRequests) this.btnRefreshRequests.addEventListener('click', () => this.loadSignatureRequests());
     }
     showLoading(show) { this.loadingOverlay.classList.toggle('hidden', !show); }
     checkSession() {
@@ -93,7 +97,8 @@ class AdminApp {
     handleLogout() { ['adminSessionToken','adminStaffId','adminStaffName','adminRole','adminAccountCode','adminAccountName'].forEach(k => sessionStorage.removeItem(k)); this.session = null; this.loginScreen.classList.remove('hidden'); this.dashboardScreen.classList.add('hidden'); }
     showDashboard() {
         this.loginScreen.classList.add('hidden'); this.dashboardScreen.classList.remove('hidden');
-        this.accountBadge.textContent = `${this.session.accountName} (${this.session.accountCode})`;
+        this.accountBadge.textContent = `Account: ${this.session.accountName} (${this.session.accountCode})`;
+        if (this.sessionBadge) this.sessionBadge.textContent = `Login: ${this.session.staffName || this.session.staffId} (${this.session.staffId}) | ${this.session.role}`;
         this.navStaff.classList.toggle('hidden', this.session.role !== 'ADMIN');
         this.switchView('transactions');
     }
@@ -101,7 +106,7 @@ class AdminApp {
         [this.navTransactions, this.navCreateRequest, this.navStaff].forEach(n => n.classList.remove('active'));
         [this.viewTransactions, this.viewCreateRequest, this.viewStaff].forEach(v => v.classList.add('hidden'));
         if (viewName === 'transactions') { this.navTransactions.classList.add('active'); this.viewTransactions.classList.remove('hidden'); this.loadTransactions(); }
-        if (viewName === 'create-request') { this.navCreateRequest.classList.add('active'); this.viewCreateRequest.classList.remove('hidden'); }
+        if (viewName === 'create-request') { this.navCreateRequest.classList.add('active'); this.viewCreateRequest.classList.remove('hidden'); this.loadSignatureRequests(); }
         if (viewName === 'staff') { this.navStaff.classList.add('active'); this.viewStaff.classList.remove('hidden'); this.loadStaff(); }
     }
     async loadTransactions() {
@@ -137,10 +142,75 @@ class AdminApp {
             if (error) throw new Error(getRpcErrorMessage(error));
             if (!data || !data.ok) throw new Error(data?.message || 'สร้างรายการรอเซ็นไม่สำเร็จ');
             this.requestForm.reset();
-            this.requestStatus.textContent = `ส่งไปยังเครื่องเซ็นแล้ว | Request ID: ${data.data.id}`;
+            this.requestStatus.textContent = `ส่งไปยังเครื่องเซ็นแล้ว | สถานะ PENDING | Request ID: ${data.data.id}`;
             this.requestStatus.classList.remove('hidden');
+            this.loadSignatureRequests();
         } catch (err) { this.requestError.textContent = err.message; this.requestError.classList.remove('hidden'); }
         finally { this.showLoading(false); }
+    }
+
+    statusLabel(status) {
+        const labels = { PENDING: 'รอเครื่องเซ็น', SIGNING: 'เปิดหน้าเซ็นแล้ว', COMPLETED: 'เซ็นสำเร็จ', CANCELLED: 'ยกเลิก' };
+        return labels[status] || status || '-';
+    }
+    async loadSignatureRequests() {
+        if (!this.requestsTbody || !this.session) return;
+        this.requestsTbody.textContent = '';
+        const { data, error } = await supabaseClient.rpc('list_signature_requests', { p_session_token: this.session.sessionToken, p_status: null });
+        if (error) {
+            const tr = document.createElement('tr');
+            const td = textCell('โหลดคิวรอเซ็นผิดพลาด: ' + getRpcErrorMessage(error));
+            td.colSpan = 7;
+            td.className = 'text-center';
+            tr.appendChild(td);
+            this.requestsTbody.appendChild(tr);
+            return;
+        }
+        if (!data || data.length === 0) {
+            const tr = document.createElement('tr');
+            const td = textCell('ยังไม่มีคิวรอเซ็นใน account นี้');
+            td.colSpan = 7;
+            td.className = 'text-center';
+            tr.appendChild(td);
+            this.requestsTbody.appendChild(tr);
+            return;
+        }
+        data.forEach(req => {
+            const tr = document.createElement('tr');
+            const patientName = [req.patient_first_name, req.patient_last_name].filter(Boolean).join(' ');
+            const statusCell = document.createElement('td');
+            const statusBadge = document.createElement('span');
+            statusBadge.className = 'status-badge status-' + String(req.status || '').toLowerCase();
+            statusBadge.textContent = this.statusLabel(req.status);
+            statusCell.appendChild(statusBadge);
+            tr.appendChild(textCell(new Date(req.updated_at || req.created_at).toLocaleString('th-TH')));
+            tr.appendChild(statusCell);
+            tr.appendChild(textCell(req.vn ? req.hn + ' / ' + req.vn : req.hn));
+            tr.appendChild(textCell(patientName || '-'));
+            tr.appendChild(textCell((req.created_by_staff_name || '') + ' (' + (req.created_by_staff_id || '') + ')'));
+            tr.appendChild(textCell(req.assigned_device_id || '-'));
+            const actionCell = document.createElement('td');
+            if (['PENDING', 'SIGNING'].includes(req.status)) {
+                const cancelButton = document.createElement('button');
+                cancelButton.className = 'btn-warning btn-small';
+                cancelButton.textContent = 'ยกเลิก';
+                cancelButton.addEventListener('click', () => this.cancelSignatureRequest(req.id));
+                actionCell.appendChild(cancelButton);
+            } else {
+                actionCell.textContent = '-';
+            }
+            tr.appendChild(actionCell);
+            this.requestsTbody.appendChild(tr);
+        });
+    }
+    async cancelSignatureRequest(requestId) {
+        if (!confirm('ต้องการยกเลิกคิวรอเซ็นนี้ใช่หรือไม่?')) return;
+        this.showLoading(true);
+        const { data, error } = await supabaseClient.rpc('cancel_signature_request', { p_session_token: this.session.sessionToken, p_request_id: requestId });
+        this.showLoading(false);
+        if (error) { alert('ยกเลิกคิวไม่สำเร็จ: ' + getRpcErrorMessage(error)); return; }
+        if (data && !data.ok) { alert('ยกเลิกคิวไม่สำเร็จ: ' + data.message); return; }
+        this.loadSignatureRequests();
     }
     async loadStaff() {
         if (this.session.role !== 'ADMIN') return; this.showLoading(true); this.staffTbody.textContent = '';

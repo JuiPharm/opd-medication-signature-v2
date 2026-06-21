@@ -16,9 +16,9 @@
 
     <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600&display=swap" rel="stylesheet">
 
-    <link rel="stylesheet" href="../frontend/styles.css?v=20260621a"> <!-- Reuse some global styles -->
+    <link rel="stylesheet" href="../frontend/styles.css?v=20260621c"> <!-- Reuse some global styles -->
 
-    <link rel="stylesheet" href="admin.css?v=20260621a">
+    <link rel="stylesheet" href="admin.css?v=20260621c">
 
 </head>
 
@@ -88,6 +88,7 @@
 
                 <h2>ระบบหลังบ้าน v2</h2>
                 <span id="account-badge" class="account-badge"></span>
+                <span id="session-badge" class="account-badge session-badge"></span>
 
             </div>
 
@@ -219,6 +220,30 @@
                     </form>
                     <div id="request-status" class="alert alert-info hidden"></div>
                     <div id="request-error" class="alert alert-error hidden"></div>
+
+                    <div class="request-queue-panel mt-4">
+                        <div class="flex-between mb-2">
+                            <h3>สถานะคิวรอเซ็น</h3>
+                            <button type="button" id="btn-refresh-requests" class="btn-secondary">รีเฟรชคิว</button>
+                        </div>
+                        <p class="text-muted">ดูได้ว่า case ค้างอยู่ตรงไหน: PENDING = รอเครื่องเซ็น, SIGNING = เปิดหน้าเซ็นแล้ว, COMPLETED = เซ็นสำเร็จ, CANCELLED = ยกเลิก</p>
+                        <div class="table-responsive">
+                            <table class="admin-table request-table">
+                                <thead>
+                                    <tr>
+                                        <th>อัปเดตล่าสุด</th>
+                                        <th>สถานะ</th>
+                                        <th>HN / VN</th>
+                                        <th>ชื่อ-นามสกุล</th>
+                                        <th>ผู้ส่ง</th>
+                                        <th>เครื่องที่รับคิว</th>
+                                        <th>จัดการ</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="requests-tbody"></tbody>
+                            </table>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -300,9 +325,9 @@
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
-    <script src="../frontend/config.js?v=20260621a"></script>
+    <script src="../frontend/config.js?v=20260621c"></script>
 
-    <script src="admin.js?v=20260621a"></script>
+    <script src="admin.js?v=20260621c"></script>
 
 </body>
 
