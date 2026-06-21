@@ -148,7 +148,7 @@ class App {
         this.showScreen('waiting');
         this.pollPendingRequest();
         this.stopPolling();
-        this.pollInterval = setInterval(() => this.pollPendingRequest(), 3000);
+        this.pollInterval = setInterval(() => this.pollPendingRequest(), 2000);
     }
     stopPolling() {
         if (this.pollInterval) clearInterval(this.pollInterval);
@@ -203,14 +203,23 @@ class App {
         this.duplicateOverlay.classList.remove('hidden');
     }
     showPatientMode(hn, isDuplicateConfirmed, request = null) {
-        this.patientHnDisplay.textContent = this.maskHN(hn);
+        this.patientHnDisplay.textContent = request ? hn : this.maskHN(hn);
         this.isDuplicateConfirmed = isDuplicateConfirmed;
         this.signatureForm.reset();
         if (this.signaturePad) this.signaturePad.clear();
         this.submitError.classList.add('hidden');
         if (request && this.patientDetailBox) {
             const fullName = [request.patient_first_name, request.patient_last_name].filter(Boolean).join(' ');
-            this.patientDetailBox.textContent = [fullName ? `ชื่อ: ${fullName}` : '', request.vn ? `VN: ${request.vn}` : '', `Request: ${request.id}`].filter(Boolean).join(' | ');
+            const receiverLabel = request.receiver_type === 'RELATIVE'
+                ? 'ญาติหรือผู้ดูแลรับยาแทน'
+                : 'ผู้ป่วยรับยาด้วยตนเอง';
+            this.patientDetailBox.textContent = [
+                request.hn ? `HN: ${request.hn}` : '',
+                request.vn ? `VN: ${request.vn}` : '',
+                fullName ? `ชื่อ-นามสกุล: ${fullName}` : '',
+                `ผู้รับยา: ${receiverLabel}`,
+                `Request ID: ${request.id}`,
+            ].filter(Boolean).join(' | ');
             this.patientDetailBox.classList.remove('hidden');
             const receiver = document.querySelector(`input[name="receiverType"][value="${request.receiver_type || 'PATIENT'}"]`);
             if (receiver) receiver.checked = true;
