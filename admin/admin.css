@@ -425,3 +425,11 @@ body {
 .request-full-name-group {
     grid-column: 1 / -1;
 }
+
+
+.request-table td:last-child {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+    flex-wrap: wrap;
+}

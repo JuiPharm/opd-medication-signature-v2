@@ -198,18 +198,35 @@ class AdminApp {
             tr.appendChild(textCell((req.created_by_staff_name || '') + ' (' + (req.created_by_staff_id || '') + ')'));
             tr.appendChild(textCell(req.assigned_device_id || '-'));
             const actionCell = document.createElement('td');
+            if (req.status === 'SIGNING') {
+                const resendButton = document.createElement('button');
+                resendButton.className = 'btn-secondary btn-small';
+                resendButton.textContent = 'ส่งซ้ำ';
+                resendButton.addEventListener('click', () => this.requeueSignatureRequest(req.id));
+                actionCell.appendChild(resendButton);
+            }
             if (['PENDING', 'SIGNING'].includes(req.status)) {
                 const cancelButton = document.createElement('button');
                 cancelButton.className = 'btn-warning btn-small';
                 cancelButton.textContent = 'ยกเลิก';
                 cancelButton.addEventListener('click', () => this.cancelSignatureRequest(req.id));
                 actionCell.appendChild(cancelButton);
-            } else {
+            }
+            if (!actionCell.childElementCount) {
                 actionCell.textContent = '-';
             }
             tr.appendChild(actionCell);
             this.requestsTbody.appendChild(tr);
         });
+    }
+    async requeueSignatureRequest(requestId) {
+        if (!confirm('ต้องการส่ง case นี้กลับไปหน้าเซ็นอีกครั้งใช่หรือไม่?')) return;
+        this.showLoading(true);
+        const { data, error } = await supabaseClient.rpc('requeue_signature_request', { p_session_token: this.session.sessionToken, p_request_id: requestId });
+        this.showLoading(false);
+        if (error) { alert('ส่งซ้ำไม่สำเร็จ: ' + getRpcErrorMessage(error)); return; }
+        if (data && !data.ok) { alert('ส่งซ้ำไม่สำเร็จ: ' + data.message); return; }
+        this.loadSignatureRequests();
     }
     async cancelSignatureRequest(requestId) {
         if (!confirm('ต้องการยกเลิกคิวรอเซ็นนี้ใช่หรือไม่?')) return;

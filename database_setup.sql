@@ -193,6 +193,7 @@ DROP FUNCTION IF EXISTS public.login_staff(TEXT, TEXT);
 DROP FUNCTION IF EXISTS public.login_staff(TEXT, TEXT, TEXT);
 DROP FUNCTION IF EXISTS public.list_transactions(TEXT, TEXT, DATE);
 DROP FUNCTION IF EXISTS public.list_signature_requests(TEXT, TEXT);
+DROP FUNCTION IF EXISTS public.requeue_signature_request(TEXT, UUID);
 DROP FUNCTION IF EXISTS public.list_staff(TEXT);
 
 CREATE OR REPLACE FUNCTION public.hash_session_token(p_token TEXT)
@@ -742,6 +743,36 @@ BEGIN
 END;
 $$;
 
+CREATE OR REPLACE FUNCTION public.requeue_signature_request(p_session_token TEXT, p_request_id UUID)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, extensions
+AS $$
+DECLARE
+    v_session RECORD;
+    v_updated UUID;
+BEGIN
+    SELECT * INTO v_session FROM public.require_staff_session(p_session_token);
+    IF v_session.role NOT IN ('ADMIN', 'STAFF') THEN
+        RAISE EXCEPTION 'Staff role required';
+    END IF;
+    UPDATE public.signature_requests
+    SET status = 'PENDING',
+        assigned_device_id = NULL,
+        updated_at = NOW()
+    WHERE id = p_request_id
+      AND account_id = v_session.account_id
+      AND status = 'SIGNING'
+    RETURNING id INTO v_updated;
+    IF v_updated IS NULL THEN
+        RETURN jsonb_build_object('ok', false, 'message', 'ไม่พบ request สถานะ SIGNING ที่ส่งซ้ำได้ใน account นี้');
+    END IF;
+    PERFORM public.write_audit(v_session.account_id, v_session.staff_user_id, v_session.staff_id, 'requeue_signature_request', 'signature_requests', p_request_id);
+    RETURN jsonb_build_object('ok', true);
+END;
+$$;
+
 REVOKE ALL ON FUNCTION public.hash_session_token(TEXT) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.write_audit(UUID, UUID, TEXT, TEXT, TEXT, UUID, JSONB) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.require_staff_session(TEXT) FROM PUBLIC;
@@ -758,3 +789,4 @@ GRANT EXECUTE ON FUNCTION public.get_pending_signature_request(TEXT) TO anon, au
 GRANT EXECUTE ON FUNCTION public.claim_signature_request(TEXT, UUID) TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.complete_signature_request(TEXT, UUID, TEXT, TEXT) TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.cancel_signature_request(TEXT, UUID) TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.requeue_signature_request(TEXT, UUID) TO anon, authenticated;
