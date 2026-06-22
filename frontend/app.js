@@ -68,7 +68,7 @@ class App {
         this.signatureForm.addEventListener('submit', e => this.handleSignatureSubmit(e));
         this.btnLogout.addEventListener('click', () => this.handleLogout());
         if (this.btnWaitingLogout) this.btnWaitingLogout.addEventListener('click', () => this.handleLogout());
-        this.btnCancelPatient.addEventListener('click', () => this.currentRequest ? this.resetAfterQueuedRequest() : this.startStaffMode());
+        if (this.btnCancelPatient) this.btnCancelPatient.addEventListener('click', () => this.currentRequest ? this.resetAfterQueuedRequest() : this.startStaffMode());
         this.btnConfirmDuplicate.addEventListener('click', () => { this.duplicateOverlay.classList.add('hidden'); this.showPatientMode(this.currentHn, true); });
         this.btnCancelDuplicate.addEventListener('click', () => { this.duplicateOverlay.classList.add('hidden'); this.hnInput.value = ''; this.hnInput.focus(); });
         this.btnSuccessOk.addEventListener('click', () => this.resetAfterQueuedRequest());
@@ -228,6 +228,8 @@ class App {
         this.patientHnDisplay.textContent = request ? hn : this.maskHN(hn);
         this.isDuplicateConfirmed = isDuplicateConfirmed;
         this.signatureForm.reset();
+        const chkAccept = document.getElementById('chk-accept');
+        if (chkAccept) chkAccept.checked = true;
         if (this.signaturePad) this.signaturePad.clear();
         this.submitError.classList.add('hidden');
         if (request && this.patientDetailBox) {

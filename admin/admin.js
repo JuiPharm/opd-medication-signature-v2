@@ -13,6 +13,13 @@ function getRpcErrorMessage(error) {
     return error.message || "Unknown Supabase error";
 }
 function textCell(value) { const td = document.createElement('td'); td.textContent = value ?? ''; return td; }
+function splitPatientName(fullName) {
+    const clean = normalizeText(fullName).replace(/\s+/g, ' ');
+    if (!clean) return { firstName: null, lastName: null };
+    const parts = clean.split(' ');
+    if (parts.length === 1) return { firstName: clean, lastName: null };
+    return { firstName: parts.slice(0, -1).join(' '), lastName: parts.slice(-1)[0] };
+}
 
 class AdminApp {
     constructor() { this.session = null; this.initElements(); this.bindEvents(); this.checkSession(); }
@@ -131,12 +138,13 @@ class AdminApp {
     async handleCreateRequest(e) {
         e.preventDefault(); this.requestStatus.classList.add('hidden'); this.requestError.classList.add('hidden'); this.showLoading(true);
         try {
+            const patientName = splitPatientName(document.getElementById('request-full-name').value);
             const { data, error } = await supabaseClient.rpc('create_signature_request', {
                 p_session_token: this.session.sessionToken,
                 p_hn: normalizeText(document.getElementById('request-hn').value),
                 p_vn: normalizeText(document.getElementById('request-vn').value) || null,
-                p_patient_first_name: normalizeText(document.getElementById('request-first-name').value) || null,
-                p_patient_last_name: normalizeText(document.getElementById('request-last-name').value) || null,
+                p_patient_first_name: patientName.firstName,
+                p_patient_last_name: patientName.lastName,
                 p_receiver_type: document.getElementById('request-receiver-type').value
             });
             if (error) throw new Error(getRpcErrorMessage(error));

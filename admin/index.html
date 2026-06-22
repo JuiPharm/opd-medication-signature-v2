@@ -16,9 +16,9 @@
 
     <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600&display=swap" rel="stylesheet">
 
-    <link rel="stylesheet" href="../frontend/styles.css?v=20260621d"> <!-- Reuse some global styles -->
+    <link rel="stylesheet" href="../frontend/styles.css?v=20260622a"> <!-- Reuse some global styles -->
 
-    <link rel="stylesheet" href="admin.css?v=20260621d">
+    <link rel="stylesheet" href="admin.css?v=20260622a">
 
 </head>
 
@@ -203,13 +203,9 @@
                             <label for="request-vn">VN</label>
                             <input type="text" id="request-vn" placeholder="VN">
                         </div>
-                        <div class="form-group">
-                            <label for="request-first-name">ชื่อ</label>
-                            <input type="text" id="request-first-name">
-                        </div>
-                        <div class="form-group">
-                            <label for="request-last-name">นามสกุล</label>
-                            <input type="text" id="request-last-name">
+                        <div class="form-group request-full-name-group">
+                            <label for="request-full-name">ชื่อ-นามสกุล</label>
+                            <input type="text" id="request-full-name" placeholder="ชื่อ นามสกุล">
                         </div>
                         <div class="form-group">
                             <label for="request-receiver-type">ประเภทผู้รับยา</label>
@@ -329,9 +325,9 @@
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
-    <script src="../frontend/config.js?v=20260621d"></script>
+    <script src="../frontend/config.js?v=20260622a"></script>
 
-    <script src="admin.js?v=20260621d"></script>
+    <script src="admin.js?v=20260622a"></script>
 
 </body>
 
